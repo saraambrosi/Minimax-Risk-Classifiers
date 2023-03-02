@@ -1,0 +1,31 @@
+
+
+% MATLAB code for the theoretical upper bound to the curve of errors on sensitivity and specificity:
+% bound relative to specificity
+function b_e1 = bound_1(Ypred_Xtrain, M, tau, lambda, L)
+
+    h = [Ypred_Xtrain==2, zeros(1,L)]';
+    e = [ones(1,L), zeros(1,L)]';
+    for j = 1:L
+        r=3*(j-1)+1;
+        G(:, j) = M(r,:)';
+        G(:, L+j) = M(r+1,:)';
+    end
+    % find y
+    cvx_begin quiet
+        variable y(2*L,1)
+        minimize (-h'*y)
+        subject to
+            G*y-(tau-lambda)*sum(y) >= 0
+            (tau+lambda)*sum(y)-G*y >= 0
+            y >= 0
+            e'*y == 1
+    cvx_end
+
+    p=y*(1/sum(y));
+
+    b_e1=h'*y;
+end
+
+% The code for the bound relative to sensitivity is specular.
+
