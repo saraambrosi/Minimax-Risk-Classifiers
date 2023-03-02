@@ -1,0 +1,35 @@
+
+% MATLAB implementation of the Cost-Sensitive Minimax Risk Classifier with Simple Feature Mapping.
+function [h1,h2] = h_MRC(X, muu, nuu, C)
+    val1 = ( (Phi(Psi(X),1)'*muu + nuu)/C(2,1) );
+    val2 = ( (Phi(Psi(X),2)'*muu + nuu)/C(1,2) );
+
+    if val1+1 > 0 && val2+1 > 0
+        h1=(1+val1)/(2+val1+val2);
+        h2=(1+val2)/(2+val1+val2);
+    else
+        if val1+1 <= 0 && val2+1 <= 0
+                h1=0.5;
+                h2=0.5;
+        else
+            if val1+1 <= 0 && val2+1 > 0
+                h1 = 0;
+                h2 = 1;
+            else 
+                h1 = 1;
+                h2 = 0;
+            end
+        end
+end
+
+% MATLAB implementation of the Deterministic Approximation of the Cost-Sensitive
+% Minimax Risk Classifier with Simple Feature Mapping.
+function [y] = h_C1_C2(X, muu, nuu, C)
+    val1 = (Phi(X,1)'*muu + nuu)/C(2,1);
+    val2 = (Phi(X,2)'*muu + nuu)/C(1,2);
+    if val1 >= val2
+        y = 1;   
+    else 
+        y = 2; 
+    end
+end
