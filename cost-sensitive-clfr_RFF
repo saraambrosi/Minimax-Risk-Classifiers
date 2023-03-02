@@ -1,0 +1,381 @@
+\section{Cost-Sensitive Minimax Risk Classifier Random Fourier Feaures}
+
+Below the MATLAB code for the Random Fourier Features Minimax Risk Classifier.
+
+\color{blue}
+\begin{verbatim}
+function [h1,h2] = h_RFF_MRC(X, W, muu, nuu, C)
+    val1 = ( (Phi(Psi_Fourier(X, W),1)'*muu + nuu)/C(2,1) );
+    val2 = ( (Phi(Psi_Fourier(X, W),2)'*muu + nuu)/C(1,2) );
+
+    if val1+1 > 0 && val2+1 > 0
+        h1=(1+val1)/(2+val1+val2);
+        h2=(1+val2)/(2+val1+val2);
+    else
+        if val1+1 <= 0 && val2+1 <= 0
+                h1=0.5;
+                h2=0.5;
+        else
+            if val1+1 <= 0 && val2+1 > 0
+                h1 = 0;
+                h2 = 1;
+            else 
+                h1 = 1;
+                h2 = 0;
+            end
+        end
+end
+\end{verbatim}
+\color{black}
+
+\bigskip
+
+Below the MATLAB implementation of the function $\Psi_{RFF}$.
+
+\color{blue}
+\begin{verbatim}
+function [v] = Psi_Fourier(X,W)
+        v(1)=1;
+        for i=1:300
+            v(2*i) = cos(X*W(:,i));
+            v(2*i+1) = sin(X*W(:,i));
+        end
+end
+\end{verbatim}
+\color{black}
+
+\bigskip
+
+Below the MATLAB code for the deterministic approximation of the Random Fourier Features Minimax Risk Classifier.
+
+\color{blue}
+\begin{verbatim}
+function [y] = h_C1_C2_PHI_PSI_FOURIER(X, muu, nuu, C, W)
+    val1 = (Phi(Psi_Fourier(X,W),1)'*muu + nuu)/C(2,1);
+    val2 = (Phi(Psi_Fourier(X,W),2)'*muu + nuu)/C(1,2);
+    if val1 >= val2
+        y = 1;   
+    else 
+        y = 2; 
+    end
+end
+\end{verbatim}
+\color{black}
+
+\bigskip
+
+
+Below the MATLAB code for the theoretical upper bound for the Random Fourier Features Minimax Risk Classifier.
+
+\color{blue}
+\begin{verbatim}
+
+%bound on specificity
+function Mb_e1 = Mbound_RFF_1(Xtrain, W, M, tau, lambda, C, muu, nuu)
+    
+    L = size(Xtrain,1); 
+
+    for i = 1 : L
+        h(L+i)=0;
+        [ ~ , h(i)] = h_RFF_MRC(Xtrain(i,:), W, muu, nuu, C);
+    end
+
+    e = [ones(1,L), zeros(1,L)]';
+
+    for j = 1:L
+
+        r=3*(j-1)+1;
+        G(:, j) = M(r,:)';
+        G(:, L+j) = M(r+1,:)';
+
+    end
+
+    % find y
+    cvx_begin 
+        variable y(2*L,1)
+        minimize (-h*y)
+        subject to
+            G*y-(tau-lambda)*sum(y) >= 0
+            (tau+lambda)*sum(y)-G*y >= 0
+            y >= 0
+            e'*y == 1
+    cvx_end
+
+    p=y*(1/sum(y));
+
+    Mb_e1=h*y;
+end
+
+%bound on sensitivity
+function Mb_e2 = Mbound_RFF_2(Xtrain, W, M, tau, lambda, C, muu, nuu)
+
+    L = size(Xtrain,1); 
+
+    for i = 1 : L
+        h(i)=0;
+        [ h(L+i), ~ ] = h_RFF_MRC(Xtrain(i,:), W, muu, nuu, C);
+    end
+
+    e = [zeros(1,L), ones(1,L)]';
+
+    for j = 1:L
+
+        r=3*(j-1)+1;
+        G(:, j) = M(r,:)';
+        G(:, L+j) = M(r+1,:)';
+
+    end
+    
+    % find y
+    cvx_begin 
+        variable y(2*L,1)
+        minimize (-h*y)
+        subject to
+            G*y-(tau-lambda)*sum(y) >= 0
+            (tau+lambda)*sum(y)-G*y >= 0
+            y >= 0
+            e'*y == 1
+    cvx_end
+
+    p=y*(1/sum(y));
+
+    Mb_e2=h*y;
+end
+
+\end{verbatim}
+\color{black}
+
+\bigskip
+
+
+Below the MATLAB code to train and test the classifiers above and compare them with the logistic regression. 
+
+\color{blue}
+\begin{verbatim}
+%cvx_setup
+
+%%
+% plot err1 vs err2 varying C
+
+clear all;
+close all;
+
+A = load('covid.mat');
+Df = A.datosnormaalizados;
+
+nrow=size(Df,1);
+ncol=size(Df,2);
+
+% così i label diventano '1' e '2'
+Df(:,ncol)=Df(:,ncol)+ones(nrow,1);
+
+d = ncol-1;  
+p = 2*600 +2; % +2 for the marginals
+
+X = Df(:, 1:d);
+X = zscore(X);
+Y = Df(:, d+1);
+
+rng(123);
+cv = cvpartition(nrow, 'KFold', 10);
+
+s = sqrt(size(X,2)/2);
+sig=(1/s)*(1/s);
+
+for i=1:300
+    W(:,i) = normrnd(0,sig,[1 size(X,2)]);
+end
+
+m=10;
+c=linspace(0,1,m);
+c(1)=10^(-4);
+c(m)=1- 10^(-4);
+
+for i=1:m
+    C_12 = c(i); 
+    C_21 = 1-C_12;
+    C = [ 0, C_12; C_21, 0];
+
+    e_1 = 0;
+    e_2 = 0;
+
+    eMRC_1 = 0;
+    eMRC_2 = 0;
+
+    u = 0;
+    fprintf('Repetition %d / %d \n',i,m);
+
+    el_1 = 0;
+    el_2 = 0;
+
+    Mb1=0;
+    Mb2=0;
+
+    for k=1:10
+         
+        TrainRows = training(cv,k);
+        Xtrain = Df(TrainRows,1:(ncol-1));
+        L=sum(TrainRows);
+        Ytrain = Df(TrainRows,ncol);
+
+        TestRows = test(cv,k);
+        Xtest = Df(TestRows,1:(ncol-1));
+        Nte=sum(TestRows);
+        Ytest = Df(TestRows,ncol);
+        Ntest_1 = sum(Ytest == 1);
+        Ntest_2 = sum(Ytest == 2);
+
+        P=zeros(p,L);
+
+        for j = 1:L
+            r=3*(j-1)+1;
+            M(r,:) = Phi(Psi_Fourier(Xtrain(j,:),W), 1);
+            M(r+1,:) = Phi(Psi_Fourier(Xtrain(j,:),W), 2);
+            M(r+2,:) = Phi(Psi_Fourier(Xtrain(j,:),W), 1)*C_12 + Phi(Psi_Fourier(Xtrain(j,:),W), 2)*C_21;
+
+            b(r,1) = 0;
+            b(r+1,1) = 0;
+            b(r+2,1) = C_12 * C_21;
+            
+            P(:,j) = Phi(Psi_Fourier(Xtrain(j,:),W),Ytrain(j));
+        end
+
+        tau = mean(P,2);
+        lambda_0 = 0.3;
+        lambda = sqrt(1/L)*lambda_0*std(P')';
+        % find mu
+        cvx_begin 
+            variable muu(p,1)
+            minimize(lambda'*abs(muu) - tau'*muu + max(M*muu + b))
+        cvx_end
+        status(k,i)=1-strcmp(cvx_status, 'Solved');
+
+        if status(k,i)==1
+            u = u + 1;
+        else
+            nuu = - max(M*muu + b);
+            % predict labels
+            Ypred=zeros(1,Nte); 
+            MRC_Ypred=zeros(1,Nte);
+            for j=1:Nte
+              Ypred(j) = h_C1_C2_PHI_PSI_FOURIER(Xtest(j,:), muu, nuu, C, W);
+
+              prob = h_RFF_MRC(Xtest(j,:), W, muu, nuu, C);
+              MRC_Ypred(j) = (1-binornd(1,prob))+1;
+            end 
+    
+            s_1 = sum((Ypred' == 2) & (Ytest == 1));
+
+            % errore su label '1'
+            e_1 = e_1 + (s_1/Ntest_1);
+    
+            s_2 = sum((Ypred' == 1) & (Ytest == 2));
+
+            % errore su label '2'
+            e_2 = e_2 + (s_2/Ntest_2);
+
+
+            sMRC_1 = sum((MRC_Ypred' == 2) & (Ytest == 1));
+            eMRC_1 = eMRC_1 + (sMRC_1/Ntest_1);
+
+            sMRC_2 = sum((MRC_Ypred' == 1) & (Ytest == 2));
+            eMRC_2 = eMRC_2 + (sMRC_2/Ntest_2);
+    
+    
+            % fitclinear logit
+            clf_logit = fitclinear(Xtrain, Ytrain,'Learner','logistic', 'Cost', C');
+            Ylogit = predict(clf_logit,Xtest);
+    
+            sl_1 = sum((Ylogit == 2) & (Ytest == 1));
+            el_1 = el_1 + (sl_1/Ntest_1);
+    
+            sl_2 = sum((Ylogit == 1) & (Ytest == 2));
+            el_2 = el_2 + (sl_2/Ntest_2);
+    
+            % predict labels of training set
+            for j=1:L
+              Ypred_Xtrain(j) = h_C1_C2_PHI_PSI_FOURIER(Xtrain(j,:), muu, nuu, C, W);
+            end
+
+             Mb1 = Mb1 + Mbound_RFF_1(Xtrain, W, M, tau, lambda, C, muu, nuu);
+             Mb2 = Mb2 + Mbound_RFF_2(Xtrain, W, M, tau, lambda, C, muu, nuu);
+                        
+        end
+
+    end
+
+    err_1(i) = e_1/(k-u);
+    err_2(i) = e_2/(k-u);
+
+    errMRC_1(i) = eMRC_1/(k-u);
+    errMRC_2(i) = eMRC_2/(k-u);
+
+    errl_1(i) = el_1/(k-u);
+    errl_2(i) = el_2/(k-u);
+
+    Mbound1(i) = Mb1/(k-u);
+    Mbound2(i) = Mb2/(k-u); 
+
+end
+\end{verbatim}
+\color{black}
+
+\medskip
+
+The function ''cnvx\_bound\_RFF(Xtrain, W, M, tau, lambda, C, muu, nuu)'' comparing in the script above, is a function that for each value of the cost ''C'' computes the lowened bound as explained in Section 3 Chapter 3. Below the relative MATLAB code:
+
+\color{blue}
+\begin{verbatim}  
+function cnvx_bound = cnvx_bound_RFF(Xtrain, W, M, tau, lambda, C, muu, nuu)
+    
+    L = size(Xtrain,1); 
+
+    for i = 1 : L
+        h(L+i)=0;
+        c(i)=0;
+        [c(L+i), h(i)] = h_RFF_MRC(Xtrain(i,:), W, muu, nuu, C);
+    end
+
+    e1 = [ones(1,L), zeros(1,L)]';
+    e2 = [zeros(1,L), ones(1,L)]';
+
+    for j = 1:L
+
+        r=3*(j-1)+1;
+        G(:, j) = M(r,:)';
+        G(:, L+j) = M(r+1,:)';
+
+    end
+
+    % find y
+    cvx_begin 
+        variable y1(2*L,1)
+        minimize (-h*y1)
+        subject to
+            G*y1-(tau-lambda)*sum(y1) >= 0
+            (tau+lambda)*sum(y1)-G*y1 >= 0
+            y1 >= 0
+            e1'*y1 == 1
+    cvx_end
+
+    p1=y1*(1/sum(y1));
+
+    cvx_begin 
+        variable y2(2*L,1)
+        minimize (-c*y2)
+        subject to
+            G*y2-(tau-lambda)*sum(y2) >= 0
+            (tau+lambda)*sum(y2)-G*y2 >= 0
+            y2 >= 0
+            e2'*y2 == 1
+    cvx_end
+
+    p2=y2*(1/sum(y2));
+
+
+    cnvx_bound_p1 = [h*p1/(e1'*p1), c*p1/(e2'*p1)];
+
+    cnvx_bound_p2 = [h*p2/(e1'*p2), c*p2/(e2'*p2)];
+
+    cvnx_bound = [cnvx_bound_p1; cnvx_bound_p2];
+end
