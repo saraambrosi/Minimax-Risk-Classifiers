@@ -1,9 +1,4 @@
-\section{Cost-Sensitive Minimax Risk Classifier Random Fourier Feaures}
-
-Below the MATLAB code for the Random Fourier Features Minimax Risk Classifier.
-
-\color{blue}
-\begin{verbatim}
+% MATLAB code for the Random Fourier Features Cost-Sensitive Minimax Risk Classifier.
 function [h1,h2] = h_RFF_MRC(X, W, muu, nuu, C)
     val1 = ( (Phi(Psi_Fourier(X, W),1)'*muu + nuu)/C(2,1) );
     val2 = ( (Phi(Psi_Fourier(X, W),2)'*muu + nuu)/C(1,2) );
@@ -25,15 +20,8 @@ function [h1,h2] = h_RFF_MRC(X, W, muu, nuu, C)
             end
         end
 end
-\end{verbatim}
-\color{black}
 
-\bigskip
-
-Below the MATLAB implementation of the function $\Psi_{RFF}$.
-
-\color{blue}
-\begin{verbatim}
+% MATLAB implementation of the function $\Psi_{RFF}$.
 function [v] = Psi_Fourier(X,W)
         v(1)=1;
         for i=1:300
@@ -41,15 +29,8 @@ function [v] = Psi_Fourier(X,W)
             v(2*i+1) = sin(X*W(:,i));
         end
 end
-\end{verbatim}
-\color{black}
 
-\bigskip
-
-Below the MATLAB code for the deterministic approximation of the Random Fourier Features Minimax Risk Classifier.
-
-\color{blue}
-\begin{verbatim}
+% MATLAB code for the deterministic approximation of the classifier.
 function [y] = h_C1_C2_PHI_PSI_FOURIER(X, muu, nuu, C, W)
     val1 = (Phi(Psi_Fourier(X,W),1)'*muu + nuu)/C(2,1);
     val2 = (Phi(Psi_Fourier(X,W),2)'*muu + nuu)/C(1,2);
@@ -59,18 +40,9 @@ function [y] = h_C1_C2_PHI_PSI_FOURIER(X, muu, nuu, C, W)
         y = 2; 
     end
 end
-\end{verbatim}
-\color{black}
 
-\bigskip
-
-
-Below the MATLAB code for the theoretical upper bound for the Random Fourier Features Minimax Risk Classifier.
-
-\color{blue}
-\begin{verbatim}
-
-%bound on specificity
+% MATLAB code for the theoretical upper bound for the classifier.
+% bound on specificity
 function Mb_e1 = Mbound_RFF_1(Xtrain, W, M, tau, lambda, C, muu, nuu)
     
     L = size(Xtrain,1); 
@@ -142,16 +114,7 @@ function Mb_e2 = Mbound_RFF_2(Xtrain, W, M, tau, lambda, C, muu, nuu)
     Mb_e2=h*y;
 end
 
-\end{verbatim}
-\color{black}
-
-\bigskip
-
-
-Below the MATLAB code to train and test the classifiers above and compare them with the logistic regression. 
-
-\color{blue}
-\begin{verbatim}
+% MATLAB code to train and test the classifiers above and compare them with the logistic regression. 
 %cvx_setup
 
 %%
@@ -317,15 +280,10 @@ for i=1:m
     Mbound2(i) = Mb2/(k-u); 
 
 end
-\end{verbatim}
-\color{black}
 
-\medskip
-
-The function ''cnvx\_bound\_RFF(Xtrain, W, M, tau, lambda, C, muu, nuu)'' comparing in the script above, is a function that for each value of the cost ''C'' computes the lowened bound as explained in Section 3 Chapter 3. Below the relative MATLAB code:
-
-\color{blue}
-\begin{verbatim}  
+% The function ''cnvx\_bound\_RFF(Xtrain, W, M, tau, lambda, C, muu, nuu)'' that appears in the script above, is a function 
+% that for each value of the cost ''C'' computes the lowened bound as explained in Section 3 Chapter 3. 
+% Below the relative MATLAB code:
 function cnvx_bound = cnvx_bound_RFF(Xtrain, W, M, tau, lambda, C, muu, nuu)
     
     L = size(Xtrain,1); 
@@ -371,7 +329,6 @@ function cnvx_bound = cnvx_bound_RFF(Xtrain, W, M, tau, lambda, C, muu, nuu)
     cvx_end
 
     p2=y2*(1/sum(y2));
-
 
     cnvx_bound_p1 = [h*p1/(e1'*p1), c*p1/(e2'*p1)];
 
