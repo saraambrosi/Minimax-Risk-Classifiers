@@ -1,0 +1,114 @@
+% deterministic approximation of a 0-1 loss Minimax Risk Classifier
+function [y] = h(X,mu)
+    m = size(X,2);
+    z = zeros(1, m);
+    if  Phi(X,1)*mu >=  Phi(X,2)*mu 
+        y = 1;   
+    else 
+        y = 2; 
+    end
+end
+
+% MATLAB function for the feature mapping "Phi":
+function [v] = Phi(X,y)
+    m = size(X,2);
+    z = zeros(1, m);
+    if y == 1
+        v = [X, z]';
+    end
+    if y == 2
+        v = [z, X]';
+    end
+end
+
+% MATLAB code to test the approximation of the classifier on the Covid Dataset.
+A = load('covid.mat');
+Df = A.datosnormalizados;
+Df(:,20)=Df(:,20)+ones(2626,1);
+
+nrow=size(Df,1);
+ncol=size(Df,2);
+
+d = ncol-1;  
+p = 2*d; % 
+
+X = Df(:, 1:d);
+X = zscore(X);
+Y = Df(:, d+1);
+
+L = 1500;
+Ls = fix(linspace(50,L,100));
+
+%%
+
+for i=1:length(Ls)
+    e = 0;
+    bnd = 0;
+    u = 0;
+    el = 0;
+
+    rng(123);
+    cv = cvpartition(Ls(i), 'KFold', 10);
+    
+    for k=1:10
+         
+        TrainRows = training(cv,k);
+        Xtrain = Df(TrainRows,1:(ncol-1));
+        T=sum(TrainRows);
+        Ytrain = Df(TrainRows,ncol);
+
+        TestRows = test(cv,k);
+        Xtest = Df(TestRows,1:(ncol-1));
+        Nte=sum(TestRows);
+        Ytest = Df(TestRows,ncol);
+
+        P=zeros(p,T);
+
+        for j = 1:T
+            r=3*(j-1)+1;
+            M(r,:) = Phi(Xtrain(j,:), 1);
+            M(r+1,:) = Phi(Xtrain(j,:), 2);
+            M(r+2,:) = (1/2)*(Phi(Xtrain(j,:), 1) + Phi(Xtrain(j,:), 2));
+
+            b(r,1) = -1;
+            b(r+1,1) = -1;
+            b(r+2,1) = -(1/2);
+            
+            P(:,j) = Phi(Xtrain(j,:),Ytrain(j));
+        end
+
+        tau = mean(P,2);
+        lambda_0 = 0.3;
+        lambda = sqrt(1/T)*lambda_0*std(P')';
+        % find mu
+        cvx_begin 
+            variable muu(p,1)
+            minimize(1 - tau'*muu + lambda'*abs(muu) + max(M*muu + b))
+        cvx_end
+        status(k,i)=1-strcmp(cvx_status, 'Solved');
+
+        if status(k,i)==1
+            u = u + 1;
+        else
+            % predict labels
+            Ypred=zeros(Nte,1);
+            for j=1:Nte
+              Ypred(j) = h(Xtest(j,:),muu);
+            end            
+            s = sum(Ypred(:)~=Ytest);
+            e = e + (s/Nte);
+            bnd = bnd + cvx_optval;
+
+            % fitclinear logit
+            clf_logit = fitclinear(Xtrain, Ytrain,'Learner','logistic');
+            Ylogit = predict(clf_logit,Xtest);
+
+            sl = sum(Ylogit ~= Ytest);
+            el = el + (sl/Nte);
+        end
+    end
+    bound(i) = bnd/(k-u);
+    err(i) = e/(k-u);
+
+    errl(i) = el/(k-u);
+end
