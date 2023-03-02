@@ -33,3 +33,169 @@ function [y] = h_C1_C2(X, muu, nuu, C)
         y = 2; 
     end
 end
+
+% MATLAB code to test the Cost-Sensitive Minimax Risk Classifier on the Covid Dataset.
+A = load('covid.mat');
+Df = A.datosnormalizados;
+
+nrow=size(Df,1);
+ncol=size(Df,2);
+Df(:,ncol)=Df(:,ncol)+ones(nrow,1);
+
+d = ncol-1; 
+p = 2*d +2; % +2 for the marginals
+
+X = Df(:, 1:d);
+X = zscore(X);
+Y = Df(:, d+1);
+
+rng(123);
+c = cvpartition(nrow, 'Holdout', 0.05);
+indxTest = test(c);
+HoldIn = training(c);
+ 
+Xtest = X(indxTest, :);
+Ytest = Y(indxTest);
+Nte = c.TestSize;
+
+Ntest_1 = sum(Ytest == 1);
+Ntest_2 = sum(Ytest == 2);
+ 
+XHoldIn = X(HoldIn, :);
+YHoldIn = Y(HoldIn);
+Ntr = c.TrainSize;
+
+L=floor(0.9*Ntr);
+m=20;
+c=linspace(0,1,m);
+c(1)=10^(-4);
+c(m)=1- 10^(-4);
+
+for i=1:m
+    C_12 = c(i); 
+    C_21 = 1-C_12;
+    C = [ 0, C_12; C_21, 0];
+    
+    e_1 = 0;
+    e_2 = 0;
+
+    eMRC_1 = 0;
+    eMRC_2 = 0;
+    lMRC = 0;
+
+    u = 0;
+    fprintf('Repetition %d \n',i);
+
+    el_1 = 0;
+    el_2 = 0;
+    lfit = 0;
+
+    b1=0;
+    b2=0;
+
+    Mb1=0;
+    Mb2=0;
+    
+    for count=1:10
+        
+        rng(count)
+        rows=randperm(Ntr);
+         
+        Xtrain = XHoldIn(rows(1:L),:);
+        Ytrain = YHoldIn(rows(1:L));
+
+        P=zeros(p,L);
+
+        for j = 1:L
+            r=3*(j-1)+1;
+            M(r,:) = Phi(Psi(Xtrain(j,:)), 1);
+            M(r+1,:) = Phi(Psi(Xtrain(j,:)), 2);
+            M(r+2,:) = Phi(Psi(Xtrain(j,:)), 1)*C_12 + Phi(Psi(Xtrain(j,:)), 2)*C_21;
+
+            b(r,1) = 0;
+            b(r+1,1) = 0;
+            b(r+2,1) = C_12 * C_21;
+            
+            P(:,j) = Phi(Psi(Xtrain(j,:)),Ytrain(j));
+        end
+
+        tau = mean(P,2);
+        lambda_0 = 0.3;
+        lambda = sqrt(1/L)*lambda_0*std(P')';
+        % find mu
+        cvx_begin 
+            variable muu(p,1)
+            minimize(lambda'*abs(muu) - tau'*muu + max(M*muu + b))
+        cvx_end
+        status(count,i)=1-strcmp(cvx_status, 'Solved');
+
+        if status(count,i)==1
+            u = u + 1;
+        else
+            nuu = - max(M*muu + b);
+            % predict labels
+            for j=1:Nte
+              Ypred(j) = h_C1_C2_PHI_PSI(Xtest(j,:), muu, nuu, C);
+
+              prob = h_MRC(Xtest(j,:), muu, nuu, C);
+              MRC_Ypred(j) = (1-binornd(1,prob))+1;
+            end 
+
+            s_1 = sum((Ypred' == 2) & (Ytest == 1));
+            e_1 = e_1 + (s_1/Ntest_1);
+
+            s_2 = sum((Ypred' == 1) & (Ytest == 2));
+            e_2 = e_2 + (s_2/Ntest_2);
+            
+
+            sMRC_1 = sum((MRC_Ypred' == 2) & (Ytest == 1));
+            eMRC_1 = eMRC_1 + (sMRC_1/Ntest_1);
+
+            sMRC_2 = sum((MRC_Ypred' == 1) & (Ytest == 2));
+            eMRC_2 = eMRC_2 + (sMRC_2/Ntest_2);
+
+            lMRC = lMRC + sMRC_1*C_21 + sMRC_2*C_12;
+
+            % fitclinear logit
+            clf_logit = fitclinear(Xtrain, Ytrain,'Learner','logistic', 'Cost', C');
+            Ylogit = predict(clf_logit,Xtest);
+
+            sl_1 = sum((Ylogit == 2) & (Ytest == 1));
+            el_1 = el_1 + (sl_1/Ntest_1);
+
+            sl_2 = sum((Ylogit == 1) & (Ytest == 2));
+            el_2 = el_2 + (sl_2/Ntest_2);
+
+            lfit = lfit + sl_1*C_21 + sl_2*C_12;
+
+            % predict labels of training set
+            for j=1:L
+              Ypred_Xtrain(j) = h_C1_C2_PHI_PSI(Xtrain(j,:), muu, nuu, C);
+            end
+
+            b1 = b1 + bound_1(Ypred_Xtrain, M, tau, lambda, L);
+            b2 = b2 + bound_2(Ypred_Xtrain, M, tau, lambda, L);
+
+            Mb1 = Mb1 + Mbound_1(Xtrain, M, tau, lambda, C, muu, nuu);
+            Mb2 = Mb2 + Mbound_2(Xtrain, M, tau, lambda, C, muu, nuu);
+        end
+    end
+    err_1(i) = e_1/(count-u);
+    err_2(i) = e_2/(count-u);
+
+    errMRC_1(i) = eMRC_1/(count-u);
+    errMRC_2(i) = eMRC_2/(count-u);
+
+    errl_1(i) = el_1/(count-u);
+    errl_2(i) = el_2/(count-u);
+
+    bound1(i) = b1/(count-u);
+    bound2(i) = b2/(count-u); 
+
+    Mbound1(i) = Mb1/(count-u);
+    Mbound2(i) = Mb2/(count-u); 
+
+    lossMRC(i) = (lMRC/(count-u))/Nte;
+    lossfit(i) = (lfit/(count-u))/Nte;
+
+end
