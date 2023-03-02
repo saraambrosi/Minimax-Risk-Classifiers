@@ -1,0 +1,102 @@
+
+% MATLAB implementation of 0-1 loss Minimax Risk Classifier with enforced labels' marginal
+function [y] = h_prior(X,mu,p,M)
+
+    if p(1)>p(2)
+        z=1;
+        k=2;
+    else
+        z=2;
+        k=1;
+    end
+
+    if 1 + Phi(X,z)'*mu - max(M(:,:,z)*mu )>= Phi(X,k)'*mu + max(M(:,:,z)*mu) - max( (M(:,:,z)+M(:,:,k) )*mu)
+        y = z;   
+    else 
+        y = k; 
+    end
+
+end
+
+% code to train and test the classifier above on a dataset saved in a .csv file.
+A = readtable('file.csv');
+D = rmmissing(A);  
+Df = table2array(D);
+
+n=size(Df,1);
+d = size(Df, 2)-1; 
+dm = 2*d;
+
+X = Df(:, 1:d);
+X=zscore(X);
+Y = Df(:, d+1);
+
+rng(123);
+c = cvpartition(n, 'Holdout', 0.05);
+indxTest = test(c);
+HoldIn = training(c);
+ 
+Xtest = X(indxTest, :);
+Ytest = Y(indxTest);
+Nte = c.TestSize;
+ 
+XHoldIn = X(HoldIn, :);
+YHoldIn = Y(HoldIn);
+Ntr = c.TrainSize;
+
+L = 1000;
+Ls = fix(linspace(20,L,30));
+
+p1 = 0.3;
+p2=1-p1;
+p=[p1; p2];
+
+if p1>p2
+    z=1;
+else
+    z=2;
+end
+
+%%
+
+for i=1:length(Ls)
+    e = 0;
+    u = 0;
+    
+    for count=1:25
+        
+        Xtrain = XHoldIn(1+(count-1)*Ls(i):count*Ls(i),:);
+        Ytrain = YHoldIn(1+(count-1)*Ls(i):count*Ls(i),:);
+
+        P=zeros(2*d,Ls(i));
+
+        for j = 1:Ls(i)
+            M(j,:,1)=Phi(Xtrain(j,:), 1);
+            M(j,:,2)=Phi(Xtrain(j,:), 2);
+            
+            P(:,j) = Phi(Xtrain(j,:),Ytrain(j));
+        end
+
+        tau = mean(P,2);
+        lambda_0 = 1;
+        lambda = sqrt(1/Ls(i))*lambda_0*std(P')';
+        % find mu
+        cvx_begin
+            variable muu(dm,1)
+            minimize( lambda'*abs(muu) - tau'*muu  + (1-p(z))*max( (M(:,:,1)+M(:,:,2)) *muu) + (2*p(z)-1)* max(M(:,:,z)*muu) )
+        cvx_end
+        status(count,i)=1-strcmp(cvx_status, 'Solved');
+
+        if status(count,i)==1
+            u = u + 1;
+        else
+            % predict labels
+            for j=1:Nte
+              Ypred(j,i) = h_prior(Xtest(j,:),muu,p,M);
+            end            
+            s = sum(Ypred(:,i)~=Ytest);
+            e = e + (s/Nte);
+        end
+    end
+    err(i) = e/(count-u);
+end
